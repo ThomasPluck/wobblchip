@@ -1,8 +1,8 @@
 import hdl21 as h
-from sky130_hdl21.digital_cells import high_density as s
+from sky130_hdl21.digital_cells import high_density as hd
+import sky130_hdl21.primitives as pr
 from sky130_hdl21 import Sky130LogicParams as LP
 from random import randint
-
 
 @h.paramclass
 class RoParams:
@@ -24,7 +24,7 @@ def genRO(params: RoParams) -> h.Module:
     for stage in range(params.stages - 1):
         # Add a stage
         ro.add(
-            s.inv_4(p)(
+            hd.inv_1(p)(
                 A=ro.links[stage],
                 Y=ro.links[stage + 1],
                 VGND=ro.VSS,
@@ -37,7 +37,7 @@ def genRO(params: RoParams) -> h.Module:
 
     # Final stage
     ro.add(
-        s.nand2_4(p)(
+        hd.nand2_1(p)(
             A=ro.links[-1],
             B=ro.EN,
             Y=ro.links[0],
@@ -56,6 +56,7 @@ def genRO(params: RoParams) -> h.Module:
 
 @h.generator
 def gen_ro_arr(params: RoParams) -> h.Module:
+
     array = h.Module()
     array.VDD, array.VSS, array.EN = h.Inputs(3)
     array.links = h.Port(width=params.stages * params.rows)
@@ -72,41 +73,45 @@ def gen_ro_arr(params: RoParams) -> h.Module:
             name=f"rosc{row}",
         )
 
-    io = h.Module(name=f"arr_io{randint(0, 1000)}")
-    io.REF = h.Port()
-    array.add(io()(REF=array.links[-1]), name="arr_io")
+    @h.module
+    class Wrapper:
 
-    return array
+        VDD,VSS,EN = h.Inputs(3)
+
+        links = h.Port(width=params.stages-1)
+        REF = h.Port()
+        padding = h.Signal(width=(params.stages-2)*params.rows)
+        kernel = h.Signal()
+
+        concatd = kernel
+        for row in range(params.rows):
+            if row == 0:
+                concatd = h.Concat(concatd,padding[1:params.stages-1])
+                concatd = h.Concat(concatd,links[row])
+            else:
+                concatd = h.Concat(concatd,padding[params.stages*row:params.stages*(row+1)-1])
+                concatd = h.Concat(concatd,links[row])
+
+        rosc = array(VDD=VDD,VSS=VSS,EN=EN,links=concatd)
+
+    return Wrapper
 
 
 @h.paramclass
 class CouplingParams:
-    width = h.Param(dtype=int, default=1, desc="Width of coupling")
+    unit_length = h.Param(dtype=int, default=1, desc="Length of precision resistor")
+    multiplier = h.Param(dtype=int, default=1, desc="Multiple of Unit Length")
     name = h.Param(dtype=str, desc="Coupling Name", default="Coupling")
 
-
 p = LP()
-
-
-@h.module
-class invloop:
-    A, B = h.Inputs(2)
-    VSS, VDD = h.Inputs(2)
-
-    i1 = s.inv_1(p)(A=A, Y=B, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-    i2 = s.inv_1(p)(A=B, Y=A, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-
 
 @h.generator
 def gen_coupling(params: CouplingParams) -> h.Module:
     coupling = h.Module()
-    coupling.A, coupling.B = h.Inputs(2)
-    coupling.VDD, coupling.VSS = h.Inputs(2)
+    coupling.A, coupling.B = h.Ports(2)
 
-    coupling.loop_arr = h.InstanceArray(invloop, params.width)(
-        A=coupling.A, B=coupling.B, VDD=coupling.VDD, VSS=coupling.VSS
+    coupling.resistor = pr.PM_PREC_0p35(l=params.unit_length*params.multiplier)(
+        p=coupling.A, n=coupling.B
     )
-
-    coupling.name = params.name
 
     return coupling

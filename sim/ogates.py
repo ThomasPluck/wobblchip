@@ -66,9 +66,7 @@ class OscillatorPairing:
                 return i
         return None
 
-
 stages = 7
-
 
 @h.paramclass
 class OGateParams:

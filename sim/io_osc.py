@@ -1,5 +1,7 @@
 import hdl21 as h
-from sky130_hdl21.digital_cells import high_density as s
+from hdl21.prefix import u
+from sky130_hdl21.digital_cells import high_density as hd
+import sky130_hdl21.primitives as pr
 from sky130_hdl21 import Sky130LogicParams as p
 
 from ro import *
@@ -26,26 +28,14 @@ of oscillators to construct a digital signal that can be used by ordinary digita
 
 
 @h.module
-class tristate_p_invloop:
-    """Tristate inverter loop"""
+class TransmissionGate:
+    """Transmission Gate"""
 
-    A, B, EN = h.Inputs(3)
-    VSS, VDD = h.Inputs(2)
+    A, B, EN, VSS, VDD = h.Inputs(5)
 
-    tsi1 = s.einvp_1(p)(A=A, Z=B, TE=EN, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-    tsi2 = s.einvp_1(p)(A=B, Z=A, TE=EN, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-
-
-@h.module
-class tristate_n_invloop:
-    """Tristate inverter loop"""
-
-    A, B, EN = h.Inputs(3)
-    VSS, VDD = h.Inputs(2)
-
-    tsi1 = s.einvn_1(p)(A=A, Z=B, TE_B=EN, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-    tsi2 = s.einvn_1(p)(A=B, Z=A, TE_B=EN, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
-
+    pmos = pr.PMOS_1p8V_STD(w=1*u,l=.15*u)(d=A,s=B,g=EN,b=VSS)
+    nmos = pr.NMOS_1p8V_STD(w=.65*u,l=.15*u)(d=A,s=B,b=VSS)
+    inv = hd.inv_1(p)(A=EN,Y=nmos.g,VGND=VSS,VNB=VSS,VPWR=VDD,VPB=VDD)
 
 @h.paramclass
 class ioOscillatorParams:
@@ -71,7 +61,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     mod = IO
 
     mod.add(
-        s.buf_4(p)(
+        hd.buf_4(p)(
             A=mod.IN[-1],
             X=mod.OSC_CTRL[-1],
             VGND=mod.VSS,
@@ -86,7 +76,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     for i in range(params.n_bits - 1):
 
         mod.add(
-            s.xor2_4(p)(
+            hd.xor2_4(p)(
                 A=mod.IN[i],
                 B=mod.IN[i + 1],
                 X=mod.OSC_CTRL[i],
@@ -101,7 +91,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     # Invert all signals to produce complementary signals
     for i in range(params.n_bits):
         mod.add(
-            s.inv_4(p)(
+            hd.inv_4(p)(
                 A=mod.OSC_CTRL[i],
                 Y=mod.OSC_CTRL_B[i],
                 VGND=mod.VSS,
@@ -148,7 +138,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     # Finally wire and buffer oscillator output
     for i in range(params.n_bits):
         mod.add(
-            s.buf_4(p)(
+            hd.buf_4(p)(
                 A=mod.osc_arr.links[(i + 1) * params.stages - 1],
                 X=mod.OUT[i],
                 VGND=mod.VSS,
@@ -160,7 +150,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
         )
 
     mod.add(
-        s.buf_4(p)(
+        hd.buf_4(p)(
             A=mod.osc_arr.links[-1],
             X=mod.REF,
             VGND=mod.VSS,
@@ -193,7 +183,7 @@ def gen_out_osc(params: ioOscillatorParams) -> h.Module:
     for i in range(params.n_bits):
 
         mod.add(
-            s.buf_4(p)(
+            hd.buf_4(p)(
                 A=mod.IN[i],
                 X=mod.XORS[i],
                 VGND=mod.VSS,
@@ -207,7 +197,7 @@ def gen_out_osc(params: ioOscillatorParams) -> h.Module:
     # XOR to outputs
     for i in range(params.n_bits):
         mod.add(
-            s.xor2_4(p)(
+            hd.xor2_4(p)(
                 A=mod.XORS[i],
                 B=mod.REF,
                 X=mod.FF[i // 2],
@@ -221,7 +211,7 @@ def gen_out_osc(params: ioOscillatorParams) -> h.Module:
 
     for i in range(params.n_bits):
         mod.add(
-            s.dfxtp_4(p)(
+            hd.dfxtp_4(p)(
                 D=mod.FF[i],
                 Q=mod.OUT[i],
                 CLK=mod.CLK,
