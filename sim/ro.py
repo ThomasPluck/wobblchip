@@ -2,6 +2,7 @@ import hdl21 as h
 from sky130_hdl21.digital_cells import high_density as hd
 import sky130_hdl21.primitives as pr
 from sky130_hdl21 import Sky130LogicParams as LP
+from sky130_hdl21 import Sky130PrecResParams as PR
 from random import randint
 
 @h.paramclass
@@ -17,16 +18,16 @@ class RoParams:
 def genRO(params: RoParams) -> h.Module:
     ro = h.Module()
     ro.links = h.Port(width=params.stages, desc="Oscillator output")
-    ro.VSS, ro.VDD, ro.EN = h.Inputs(3)
+    ro.VSS, ro.VDD = h.Inputs(2)
 
     p = LP()
 
-    for stage in range(params.stages - 1):
+    for stage in range(params.stages):
         # Add a stage
         ro.add(
             hd.inv_1(p)(
                 A=ro.links[stage],
-                Y=ro.links[stage + 1],
+                Y=ro.links[(stage + 1) % params.stages],
                 VGND=ro.VSS,
                 VNB=ro.VSS,
                 VPWR=ro.VDD,
@@ -34,20 +35,6 @@ def genRO(params: RoParams) -> h.Module:
             ),
             name=f"stage{stage}",
         )
-
-    # Final stage
-    ro.add(
-        hd.nand2_1(p)(
-            A=ro.links[-1],
-            B=ro.EN,
-            Y=ro.links[0],
-            VGND=ro.VSS,
-            VNB=ro.VSS,
-            VPWR=ro.VDD,
-            VPB=ro.VDD,
-        ),
-        name=f"stage{params.stages-1}",
-    )
 
     ro.name = params.name
 
@@ -58,7 +45,7 @@ def genRO(params: RoParams) -> h.Module:
 def gen_ro_arr(params: RoParams) -> h.Module:
 
     array = h.Module()
-    array.VDD, array.VSS, array.EN = h.Inputs(3)
+    array.VDD, array.VSS = h.Inputs(2)
     array.links = h.Port(width=params.stages * params.rows)
 
     for row in range(params.rows):
@@ -66,52 +53,31 @@ def gen_ro_arr(params: RoParams) -> h.Module:
         array.add(
             genRO(params)(
                 links=array.links[step : step + params.stages],
-                EN=array.EN,
                 VSS=array.VSS,
                 VDD=array.VDD,
             ),
             name=f"rosc{row}",
         )
 
-    @h.module
-    class Wrapper:
-
-        VDD,VSS,EN = h.Inputs(3)
-
-        links = h.Port(width=params.stages-1)
-        REF = h.Port()
-        padding = h.Signal(width=(params.stages-2)*params.rows)
-        kernel = h.Signal()
-
-        concatd = kernel
-        for row in range(params.rows):
-            if row == 0:
-                concatd = h.Concat(concatd,padding[1:params.stages-1])
-                concatd = h.Concat(concatd,links[row])
-            else:
-                concatd = h.Concat(concatd,padding[params.stages*row:params.stages*(row+1)-1])
-                concatd = h.Concat(concatd,links[row])
-
-        rosc = array(VDD=VDD,VSS=VSS,EN=EN,links=concatd)
-
-    return Wrapper
+    return array
 
 
 @h.paramclass
 class CouplingParams:
-    unit_length = h.Param(dtype=int, default=1, desc="Length of precision resistor")
-    multiplier = h.Param(dtype=int, default=1, desc="Multiple of Unit Length")
+    unit_length = h.Param(dtype=int, default=100, desc="Length of precision resistor")
+    divisor = h.Param(dtype=int, default=1, desc="Multiple of Unit Length")
     name = h.Param(dtype=str, desc="Coupling Name", default="Coupling")
 
 p = LP()
+q = PR
 
 @h.generator
 def gen_coupling(params: CouplingParams) -> h.Module:
     coupling = h.Module()
-    coupling.A, coupling.B = h.Ports(2)
+    coupling.A, coupling.B, coupling.VSS = h.Ports(3)
 
-    coupling.resistor = pr.PM_PREC_0p35(l=params.unit_length*params.multiplier)(
-        p=coupling.A, n=coupling.B
+    coupling.resistor = pr.PM_PREC_0p35(q(l=params.unit_length/params.divisor))(
+        p=coupling.A, n=coupling.B, b=coupling.VSS
     )
 
     return coupling

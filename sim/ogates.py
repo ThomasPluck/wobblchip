@@ -46,7 +46,7 @@ class OscillatorPairing:
         if coupling != 0:
             index1 = self._find_zero_index(self.state[col1], start=0, step=1)
             index2 = self._find_zero_index(
-                self.state[col2], start=(int(coupling > 0) + index1 % 2) % 2, step=2
+                self.state[col2], start=(int(coupling < 0) + index1 % 2) % 2, step=2
             )
 
             if index1 is not None and index2 is not None:
@@ -58,7 +58,7 @@ class OscillatorPairing:
                 key = (col1, col2) if col1 < col2 else (col2, col1)
                 self.pairings[key] = (index1, index2, abs(coupling))
             else:
-                raise RuntimeError("No more available pairings, choose a longer RO")
+                raise RuntimeError(f"No more available pairings between {col1,col2}, choose a longer RO")
 
     def _find_zero_index(self, column, start, step):
         for i in range(start, len(column), step):
@@ -97,7 +97,7 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
     # Instantiate module
     ogate = h.Module(name=params.gate_name)
-    ogate.VSS, ogate.VDD, ogate.EN = h.Inputs(3)
+    ogate.VSS, ogate.VDD = h.Inputs(2)
     ogate.links = h.Port(width=params.stages * nodes)
 
     # Generate oscillators
@@ -105,7 +105,6 @@ def gen_ogate(params: OGateParams) -> h.Module:
         links=ogate.links,
         VDD=ogate.VDD,
         VSS=ogate.VSS,
-        EN=ogate.EN,
     )
 
     # Generate pairings
@@ -114,11 +113,10 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
         ogate.add(
             gen_coupling(
-                width=v[-1],
+                divisor=v[-1],
             )(
                 A=ogate.links[k[0] * params.stages + v[0]],
                 B=ogate.links[k[1] * params.stages + v[1]],
-                VDD=ogate.VDD,
                 VSS=ogate.VSS,
             ),
             name=temp_name,
@@ -126,31 +124,27 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
     # Create wrapper
     out = h.Module(name=f"{params.gate_name}_gate")
-    out.VDD, out.VSS, out.EN, out.REF = 4 * h.Port()
+    out.VDD, out.VSS, out.REF = 3 * h.Port()
 
     # Generate ports and concatenate links
     out.kernel = h.Signal()
     links = h.Concat(out.kernel)
     for i in range(nodes):
         # These are private
-        out.add(h.Signal(width=params.stages - 2 - (i == 0)), name=f"padding{i}")
+        out.add(h.Signal(width=params.stages - 1 - (i == 0)), name=f"padding{i}")
         links = h.Concat(links, out.get(f"padding{i}"))
         # These are public
         if i != nodes - 1:
-            out.add(h.Port(), name=f"{params.node_names[i]}i")
-            links = h.Concat(links, out.get(f"{params.node_names[i]}i"))
-            out.add(h.Port(), name=f"{params.node_names[i]}o")
-            links = h.Concat(links, out.get(f"{params.node_names[i]}o"))
+            out.add(h.Port(), name=f"{params.node_names[i]}")
+            links = h.Concat(links, out.get(f"{params.node_names[i]}"))
 
         else:
             out.add(h.Port(), name=f"REF")
             links = h.Concat(links, out.get(f"REF"))
-            out.add(h.Signal(), name=f"dummy")
-            links = h.Concat(links, out.get(f"dummy"))
 
     # Wrap ogate
     out.add(
-        ogate(VDD=out.VDD, VSS=out.VSS, EN=out.EN, links=links),
+        ogate(VDD=out.VDD, VSS=out.VSS, links=links),
         name=f"{params.gate_name}_ogate",
     )
 
@@ -174,7 +168,7 @@ J = ((0, -2, 4, 1), (-2, 0, 4, 1), (4, 4, 0, -2), (1, 1, -2, 0))
 
 nodes = ("A", "B", "C", "AUX")
 
-oAND = gen_ogate(stages=7, node_names=nodes, couplings=J, gate_name="AND")
+oAND = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="AND")
 
 # h.elaborate(oAND)
 """
@@ -201,7 +195,7 @@ J = (
 
 nodes = ("A", "B", "S", "C", "AUX")
 
-oHA = gen_ogate(stages=7, node_names=nodes, couplings=J, gate_name="HA")
+oHA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="HA")
 
 """
 The defining weight matrix of an Full-Adder o-gate is:
@@ -229,4 +223,4 @@ J = (
 
 nodes = ("A", "B", "Cin", "S", "Cout", "AUX")
 
-oFA = gen_ogate(stages=7, node_names=nodes, couplings=J, gate_name="FA")
+oFA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="FA")
