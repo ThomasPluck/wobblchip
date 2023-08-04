@@ -33,8 +33,8 @@ class TransmissionGate:
 
     A, B, EN, VSS, VDD = h.Inputs(5)
 
-    pmos = pr.PMOS_1p8V_STD(w=2, l=0.3)(d=A, s=B, b=VSS)
-    nmos = pr.NMOS_1p8V_STD(w=1.3, l=0.3)(d=A, s=B, g=EN, b=VSS)
+    pmos = pr.PMOS_1p8V_STD(w=1, l=0.15)(d=A, s=B, b=VSS)
+    nmos = pr.NMOS_1p8V_STD(w=0.65, l=0.15)(d=A, s=B, g=EN, b=VSS)
     inv = hd.inv_1(p)(A=EN, Y=pmos.g, VGND=VSS, VNB=VSS, VPWR=VDD, VPB=VDD)
 
 
@@ -54,8 +54,8 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     class IO:
         IN = h.Input(width=params.n_bits)
         OUT = h.Output(width=params.n_bits)
-        OSC_CTRL = h.Signal(width=params.n_bits)
-        OSC_CTRL_B = h.Signal(width=params.n_bits)
+        OSC_CTRL = h.Signal(width=params.n_bits + 1)
+        OSC_CTRL_B = h.Signal(width=params.n_bits + 1)
         VSS, VDD = 2 * h.Input()
         REF = h.Port()
 
@@ -66,8 +66,8 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
         mod.add(
             hd.xor2_1(p)(
                 A=mod.IN[i],
-                B=mod.IN[(i + 1) % params.n_bits],
-                X=mod.OSC_CTRL[i],
+                B=mod.IN[i + 1],
+                X=mod.OSC_CTRL[i + 1],
                 VGND=mod.VSS,
                 VNB=mod.VSS,
                 VPWR=mod.VDD,
@@ -78,6 +78,18 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
 
     mod.add(
         hd.buf_1(p)(
+            A=mod.IN[0],
+            X=mod.OSC_CTRL[0],
+            VGND=mod.VSS,
+            VNB=mod.VSS,
+            VPWR=mod.VDD,
+            VPB=mod.VDD,
+        ),
+        name="start_in_buf",
+    )
+
+    mod.add(
+        hd.buf_1(p)(
             A=mod.IN[-1],
             X=mod.OSC_CTRL[-1],
             VGND=mod.VSS,
@@ -85,11 +97,11 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
             VPWR=mod.VDD,
             VPB=mod.VDD,
         ),
-        name="in_buf",
+        name="final_in_buf",
     )
 
     # Invert all signals to produce complementary signals
-    for i in range(params.n_bits):
+    for i in range(params.n_bits + 1):
         mod.add(
             hd.inv_1(p)(
                 A=mod.OSC_CTRL[i],
@@ -103,63 +115,46 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
         )
 
     # Instantiate the oscillator array
+    nrows = params.n_bits + 1
     mod.add(
-        gen_ro_arr(stages=params.stages, rows=params.n_bits + 1)(
+        gen_ro_arr(stages=params.stages, rows=nrows)(
             VSS=mod.VSS,
             VDD=mod.VDD,
         ),
         name="osc_arr",
     )
 
-    # Wire the oscillators correctly
-    for i in range(params.n_bits):
-        # Symmetric coupling
-        mod.add(
-            TransmissionGate(
-                A=mod.osc_arr.links[i * params.stages - 1],
-                B=mod.osc_arr.links[((i + 1) % params.n_bits) * params.stages - 1],
-                EN=mod.OSC_CTRL_B[i],
-                VSS=mod.VSS,
-                VDD=mod.VDD,
-            ),
-            name=f"symtg_0_{i}",
-        )
+    segments = 2
+    # Iterate over rows
+    for r in range(0,nrows,segments):
+        # Iterate over segments
+        for s in range(segments):
+            # Iterate over polarity
+            for t in range(2):
 
-        # Symmetric coupling
-        mod.add(
-            TransmissionGate(
-                A=mod.osc_arr.links[i * params.stages - 2],
-                B=mod.osc_arr.links[((i + 1) % params.n_bits) * params.stages - 2],
-                EN=mod.OSC_CTRL_B[i],
-                VSS=mod.VSS,
-                VDD=mod.VDD,
-            ),
-            name=f"symtg_1_{i}",
-        )
+                # Symmetric coupling
+                mod.add(
+                    TransmissionGate(
+                        A=mod.osc_arr.links[((r+s) % nrows) * params.stages - 1 - t - 2*s],
+                        B=mod.osc_arr.links[((r+s+1) % nrows) * params.stages - 1 - t - 2*s],
+                        EN=mod.OSC_CTRL_B[(r+s) % nrows],
+                        VSS=mod.VSS,
+                        VDD=mod.VDD,
+                    ),
+                    name=f"symtg_{r}_{s}_{t}",
+                )
 
-        # Antisymmetric coupling
-        mod.add(
-            TransmissionGate(
-                A=mod.osc_arr.links[i * params.stages - 1],
-                B=mod.osc_arr.links[((i + 1) % params.n_bits) * params.stages - 2],
-                EN=mod.OSC_CTRL[i],
-                VSS=mod.VSS,
-                VDD=mod.VDD,
-            ),
-            name=f"asymtg_0_{i}",
-        )
-
-        # Antisymmetric coupling
-        mod.add(
-            TransmissionGate(
-                A=mod.osc_arr.links[i * params.stages - 2],
-                B=mod.osc_arr.links[((i + 1) % params.n_bits) * params.stages - 1],
-                EN=mod.OSC_CTRL[i],
-                VSS=mod.VSS,
-                VDD=mod.VDD,
-            ),
-            name=f"asymtg_1_{i}",
-        )
+                # Antisymmetric coupling
+                mod.add(
+                    TransmissionGate(
+                        A=mod.osc_arr.links[((r+s) % nrows) * params.stages - 1 - 2*s - t],
+                        B=mod.osc_arr.links[((r+s+1) % nrows) * params.stages - 1 - 2*s - int(not t)],
+                        EN=mod.OSC_CTRL[(r+s) % nrows],
+                        VSS=mod.VSS,
+                        VDD=mod.VDD,
+                    ),
+                    name=f"asymtg_{r}_{s}_{t}",
+                )
 
     # Finally wire and buffer oscillator output
     for i in range(params.n_bits):
