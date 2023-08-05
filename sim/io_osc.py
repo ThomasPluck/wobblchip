@@ -54,65 +54,10 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     class IO:
         IN = h.Input(width=params.n_bits)
         OUT = h.Output(width=params.n_bits)
-        OSC_CTRL = h.Signal(width=params.n_bits + 1)
-        OSC_CTRL_B = h.Signal(width=params.n_bits + 1)
         VSS, VDD = 2 * h.Input()
         REF = h.Port()
 
     mod = IO
-
-    # Convert digital signal to coupling representation
-    for i in range(params.n_bits - 1):
-        mod.add(
-            hd.xor2_1(p)(
-                A=mod.IN[i],
-                B=mod.IN[i + 1],
-                X=mod.OSC_CTRL[i + 1],
-                VGND=mod.VSS,
-                VNB=mod.VSS,
-                VPWR=mod.VDD,
-                VPB=mod.VDD,
-            ),
-            name=f"in_xor{i+1}",
-        )
-
-    mod.add(
-        hd.buf_1(p)(
-            A=mod.IN[0],
-            X=mod.OSC_CTRL[0],
-            VGND=mod.VSS,
-            VNB=mod.VSS,
-            VPWR=mod.VDD,
-            VPB=mod.VDD,
-        ),
-        name="start_in_buf",
-    )
-
-    mod.add(
-        hd.buf_1(p)(
-            A=mod.IN[-1],
-            X=mod.OSC_CTRL[-1],
-            VGND=mod.VSS,
-            VNB=mod.VSS,
-            VPWR=mod.VDD,
-            VPB=mod.VDD,
-        ),
-        name="final_in_buf",
-    )
-
-    # Invert all signals to produce complementary signals
-    for i in range(params.n_bits + 1):
-        mod.add(
-            hd.inv_1(p)(
-                A=mod.OSC_CTRL[i],
-                Y=mod.OSC_CTRL_B[i],
-                VGND=mod.VSS,
-                VNB=mod.VSS,
-                VPWR=mod.VDD,
-                VPB=mod.VDD,
-            ),
-            name=f"inv{i}",
-        )
 
     # Instantiate the oscillator array
     nrows = params.n_bits + 1
@@ -124,53 +69,44 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
         name="osc_arr",
     )
 
-    segments = 2
-    # Iterate over rows
-    for r in range(0,nrows,segments):
-        # Iterate over segments
-        for s in range(segments):
-            # Iterate over polarity
-            for t in range(2):
-
-                # Symmetric coupling
-                mod.add(
-                    TransmissionGate(
-                        A=mod.osc_arr.links[((r+s) % nrows) * params.stages - 1 - t - 2*s],
-                        B=mod.osc_arr.links[((r+s+1) % nrows) * params.stages - 1 - t - 2*s],
-                        EN=mod.OSC_CTRL_B[(r+s) % nrows],
-                        VSS=mod.VSS,
-                        VDD=mod.VDD,
-                    ),
-                    name=f"symtg_{r}_{s}_{t}",
-                )
-
-                # Antisymmetric coupling
-                mod.add(
-                    TransmissionGate(
-                        A=mod.osc_arr.links[((r+s) % nrows) * params.stages - 1 - 2*s - t],
-                        B=mod.osc_arr.links[((r+s+1) % nrows) * params.stages - 1 - 2*s - int(not t)],
-                        EN=mod.OSC_CTRL[(r+s) % nrows],
-                        VSS=mod.VSS,
-                        VDD=mod.VDD,
-                    ),
-                    name=f"asymtg_{r}_{s}_{t}",
-                )
-
-    # Finally wire and buffer oscillator output
+    # Instantiate the coupling links
     for i in range(params.n_bits):
+
+        # Symmetric Coupling
         mod.add(
-            hd.buf_1(p)(
-                A=mod.osc_arr.links[(i + 1) * params.stages - 1],
-                X=mod.OUT[i],
-                VGND=mod.VSS,
-                VNB=mod.VSS,
-                VPWR=mod.VDD,
-                VPB=mod.VDD,
+            hd.mux2_1(p)(
+                A0 = mod.osc_arr.links[(params.stages * (i+1)) - 1],
+                A1 = mod.osc_arr.links[(params.stages * (i+1)) - 2],
+                S = mod.IN[i],
+                X = mod.OUT[i],
+                VGND = mod.VSS,
+                VNB = mod.VSS,
+                VPWR = mod.VDD,
+                VPB = mod.VDD,
             ),
-            name=f"outbuf{i}",
+            name=f"mux_{i}",
         )
 
-    # Buffer reference signal
+
+        # Synchronize all the oscillators
+        mod.add(
+            gen_coupling(divisor=5)(
+                A=mod.osc_arr.links[(params.stages * (i)) % (params.stages * nrows)],
+                B=mod.osc_arr.links[(params.stages * (i+1)) % (params.stages * nrows)],
+                VSS=mod.VSS,
+            ),
+            name=f"sync_{i}",
+        )
+        mod.add(
+            gen_coupling(divisor=5)(
+                A=mod.osc_arr.links[(params.stages * (i)+1) % (params.stages * nrows)],
+                B=mod.osc_arr.links[(params.stages * (i+1)+1) % (params.stages * nrows)],
+                VSS=mod.VSS,
+            ),
+            name=f"sync_{i}",
+        )
+        
+    # Add reference buffer
     mod.add(
         hd.buf_1(p)(
             A=mod.osc_arr.links[-1],
@@ -180,7 +116,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
             VPWR=mod.VDD,
             VPB=mod.VDD,
         ),
-        name="refbuf",
+        name="ref_buf",
     )
 
     return mod
@@ -270,7 +206,7 @@ class DigitalSignalParams:
 
 @h.generator
 def digital_signal(params: DigitalSignalParams) -> h.Module:
-    bits = [int(bit) for bit in bin(params.inp)[2:].zfill(params.width)]
+    bits = [int(bit) for bit in bin(params.inp)[2:].zfill(params.width)][::-1]
 
     vsources = h.Module()
     vsources.VSS = h.Input()

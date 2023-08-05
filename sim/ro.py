@@ -64,7 +64,7 @@ def gen_ro_arr(params: RoParams) -> h.Module:
 
 @h.paramclass
 class CouplingParams:
-    unit_length = h.Param(dtype=int, default=100, desc="Length of precision resistor")
+    unit_length = h.Param(dtype=int, default=10, desc="Length of precision resistor")
     divisor = h.Param(dtype=int, default=1, desc="Multiple of Unit Length")
     name = h.Param(dtype=str, desc="Coupling Name", default="Coupling")
 
