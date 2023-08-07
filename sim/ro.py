@@ -64,7 +64,7 @@ def gen_ro_arr(params: RoParams) -> h.Module:
 
 @h.paramclass
 class CouplingParams:
-    unit_length = h.Param(dtype=int, default=10, desc="Length of precision resistor")
+    unit_length = h.Param(dtype=int, default=300, desc="Length of precision resistor")
     divisor = h.Param(dtype=int, default=1, desc="Multiple of Unit Length")
     name = h.Param(dtype=str, desc="Coupling Name", default="Coupling")
 
@@ -76,8 +76,6 @@ def gen_coupling(params: CouplingParams) -> h.Module:
     coupling = h.Module()
     coupling.A, coupling.B, coupling.VSS = h.Ports(3)
 
-    coupling.resistor = pr.PM_PREC_0p35(q(l=params.unit_length/params.divisor))(
-        p=coupling.A, n=coupling.B, b=coupling.VSS
-    )
+    coupling.resistor = h.primitives.Res(r=params.unit_length/params.divisor)(p=coupling.A, n=coupling.B)
 
     return coupling
