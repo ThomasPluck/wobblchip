@@ -72,7 +72,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     )
 
     symmetric_pattern = [(0,0),(0,0)]
-    antisymmetric_pattern = [(1,2),(1,2)]
+    antisymmetric_pattern = [(1,2),(2,1)]
 
     # Instantiate the coupling links
     for i in range(params.n_bits):
@@ -169,10 +169,13 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     for i in range(params.n_bits):
 
         mod.add(
-            gen_coupling(divisor=1)(
-                A=mod.osc_arr.links[(i+1) * params.stages - 1],
-                B=mod.OUT[i],
-                VSS=mod.VSS,
+            hd.buf_1(p)(
+                A=mod.osc_arr.links[i * params.stages + 6],
+                X=mod.OUT[i],
+                VGND=mod.VSS,
+                VNB=mod.VSS,
+                VPWR=mod.VDD,
+                VPB=mod.VDD,
             ),
             name=f"out_coupling{i}",
         )
@@ -180,10 +183,13 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
     # Instantiate reference coupling
 
     mod.add(
-        gen_coupling(divisor=1)(
-            A=mod.osc_arr.links[-1],
-            B=mod.REF,
-            VSS=mod.VSS,
+        hd.buf_1(p)(
+            A=mod.osc_arr.links[-3],
+            X=mod.REF,
+            VGND=mod.VSS,
+            VNB=mod.VSS,
+            VPWR=mod.VDD,
+            VPB=mod.VDD,
         ),
         name=f"ref_coupling",
     )

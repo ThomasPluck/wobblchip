@@ -66,7 +66,7 @@ class OscillatorPairing:
                 return i
         return None
 
-stages = 31
+stages = 13
 
 @h.paramclass
 class OGateParams:
@@ -121,8 +121,8 @@ def gen_ogate(params: OGateParams) -> h.Module:
                         gen_coupling(
                             divisor=abs(num),
                         )(
-                            A=ogate.links[i * params.stages+k],
-                            B=ogate.links[j * params.stages+k],
+                            A=ogate.links[i * params.stages + k],# 2*(i+j-1) + k],
+                            B=ogate.links[j * params.stages + k],# 2*(i+j-1) + k],
                             VSS=ogate.VSS,
                         ),
                         name=temp_name,
@@ -136,8 +136,8 @@ def gen_ogate(params: OGateParams) -> h.Module:
                         gen_coupling(
                             divisor=abs(num),
                         )( 
-                            A=ogate.links[i * params.stages+k[0]],
-                            B=ogate.links[j * params.stages+k[1]],
+                            A=ogate.links[i * params.stages + k[0]], # 2*(i+j-1) + k[0]],
+                            B=ogate.links[j * params.stages + k[1]],# 2*(i+j-1) + k[1]],
                             VSS=ogate.VSS,
                         ),
                         name=temp_name
@@ -185,7 +185,7 @@ And it has nodes:
 A, B, A&B == C, AUX - the auxiliary bias bit
 """
 
-J = ((0, -2, 4, 1), (-2, 0, 4, 1), (4, 4, 0, -2), (1, 1, -2, 0))
+J = ((0, -2, 4, -1), (-2, 0, 4, -1), (4, 4, 0, 2), (-1, -1, 2, 0))
 
 nodes = ("A", "B", "C", "AUX")
 
