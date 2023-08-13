@@ -66,11 +66,9 @@ class OscillatorPairing:
                 return i
         return None
 
-stages = 13
-
 @h.paramclass
 class OGateParams:
-    stages = h.Param(dtype=int, desc="Number of RO stages", default=stages)
+    stages = h.Param(dtype=int, desc="Number of RO stages", default=9)
     node_names = h.Param(dtype=Tuple[str, ...], desc="Oscillator names", default=())
     couplings = h.Param(
         dtype=Tuple[Tuple[int, ...], ...],
@@ -115,32 +113,32 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
             if twist:
 
+                for k in [(3,0),(0,3)]:
+
+                    ogate.add(
+                        gen_coupling(
+                            divisor=abs(num),
+                        )( 
+                            A=ogate.links[i * params.stages + k[0] + 2*(i+j-1)],
+                            B=ogate.links[j * params.stages + k[1] + 2*(i+j-1)],
+                            VSS=ogate.VSS,
+                        ),
+                        name=temp_name
+                    )
+            
+            else:
+
                 for k in [0,3]:
 
                     ogate.add(
                         gen_coupling(
                             divisor=abs(num),
                         )(
-                            A=ogate.links[i * params.stages + k],# 2*(i+j-1) + k],
-                            B=ogate.links[j * params.stages + k],# 2*(i+j-1) + k],
+                            A=ogate.links[i * params.stages + k + 2*(i+j-1)],
+                            B=ogate.links[j * params.stages + k + 2*(i+j-1)],
                             VSS=ogate.VSS,
                         ),
                         name=temp_name,
-                    )
-            
-            else:
-
-                for k in [(1,2),(2,1)]:
-
-                    ogate.add(
-                        gen_coupling(
-                            divisor=abs(num),
-                        )( 
-                            A=ogate.links[i * params.stages + k[0]], # 2*(i+j-1) + k[0]],
-                            B=ogate.links[j * params.stages + k[1]],# 2*(i+j-1) + k[1]],
-                            VSS=ogate.VSS,
-                        ),
-                        name=temp_name
                     )
 
     # Create wrapper
@@ -171,25 +169,6 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
     return out
 
-
-"""
-The defining weight matrix of an AND o-gate is:
-
- 0 -2  4  1
--2  0  4  1
- 4  4  0 -2
- 1  1 -2  0
-
-And it has nodes:
-
-A, B, A&B == C, AUX - the auxiliary bias bit
-"""
-
-J = ((0, -2, 4, -1), (-2, 0, 4, -1), (4, 4, 0, 2), (-1, -1, 2, 0))
-
-nodes = ("A", "B", "C", "AUX")
-
-oAND = gen_ogate(stages=stages, node_names=nodes, couplings=J, gate_name="AND")
 
 # h.elaborate(oAND)
 """
