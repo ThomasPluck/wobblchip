@@ -1,6 +1,6 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/wokwi_test/badge.svg)
 
-# TT04: Oscillator-Based Ising Multiplier
+# WobblChip
 
 This repository contains:
 
@@ -42,7 +42,7 @@ Luckily enough, the correspondance between weights in the Ising Machine and coup
 
 ### Implementation
 
-The bulk of `wobblechip`'s design is to achieve two goals, digital I/O and deterministic oscillator coupling.
+The bulk of `wobblchip`'s design is to achieve two goals, digital I/O and deterministic oscillator coupling.
 
 #### Digital Input
 
@@ -70,7 +70,7 @@ The final oscillator signal for each bit and reference is coupled to the interna
 
 #### Logic Gates
 
-`wobblechip` is an oscillator-based implementation of Kamsari et al.'s sparse-Ising Machine multiplier (sIM-multiplier) - as such we only need replicate 4 logic circuits:
+`wobblchip` is an oscillator-based implementation of Kamsari et al.'s sparse-Ising Machine multiplier (sIM-multiplier) - as such we only need replicate 4 logic circuits:
 
 - COPY Gates
 - AND Gates

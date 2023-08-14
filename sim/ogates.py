@@ -71,7 +71,7 @@ class OGateParams:
     stages = h.Param(dtype=int, desc="Number of RO stages", default=9)
     node_names = h.Param(dtype=Tuple[str, ...], desc="Oscillator names", default=())
     couplings = h.Param(
-        dtype=Tuple[Tuple[int, ...], ...],
+        dtype=Tuple[Tuple[Tuple[int, ...], ...], ...],
         desc="Matrix of coupling weights",
         default=((0)),
     )
@@ -87,9 +87,6 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
     nodes = len(params.node_names)
 
-    if nodes != len(params.couplings[0]) or nodes != len(params.couplings):
-        raise ValueError("Node names do not match coupling matrix")
-
     # Instantiate module
     ogate = h.Module(name=params.gate_name)
     ogate.VSS, ogate.VDD = h.Inputs(2)
@@ -102,43 +99,43 @@ def gen_ogate(params: OGateParams) -> h.Module:
         VSS=ogate.VSS,
     )
 
+    # Check for valid pairings
+    for q in params.couplings:
+        check_list = []
+        for c in q:
+            check_list.append(c[-1] < 0)
+
+        if sum(check_list) % 2 != 0:
+            raise ValueError("Invalid pairing")          
+
     # Generate pairings
-    for i in range(nodes):
-        for j in range(i+1,nodes):
+    for idq, q in enumerate(params.couplings):
+        for c in q:
 
-            temp_name = f"{params.node_names[i]}_{params.node_names[j]}_coupling"
+            for i in range(2):
 
-            num = params.couplings[i][j]
-            twist = num < 0
+                if c[-1] < 0:
 
-            if twist:
-
-                for k in [(3,0),(0,3)]:
-
+                    # Antisymmetric coupling
                     ogate.add(
-                        gen_coupling(
-                            divisor=abs(num),
-                        )( 
-                            A=ogate.links[i * params.stages + k[0] + 2*(i+j-1)],
-                            B=ogate.links[j * params.stages + k[1] + 2*(i+j-1)],
-                            VSS=ogate.VSS,
+                        gen_coupling(divisor=abs(c[-1]))(
+                            A = ogate.links[params.stages * c[0] + idq * 2 + (i + 1) % 2],
+                            B = ogate.links[params.stages * c[1] + idq * 2 + i],
+                            VSS = ogate.VSS,
                         ),
-                        name=temp_name
+                        name=f"{params.node_names[c[0]]}{params.node_names[c[1]]}_coupling_{i}",
                     )
-            
-            else:
 
-                for k in [0,3]:
+                else:
 
+                    # Symmetric coupling
                     ogate.add(
-                        gen_coupling(
-                            divisor=abs(num),
-                        )(
-                            A=ogate.links[i * params.stages + k + 2*(i+j-1)],
-                            B=ogate.links[j * params.stages + k + 2*(i+j-1)],
-                            VSS=ogate.VSS,
+                        gen_coupling(divisor=abs(c[-1]))(
+                            A = ogate.links[params.stages * c[0] + idq * 2 + i],
+                            B = ogate.links[params.stages * c[1] + idq * 2 + i],
+                            VSS = ogate.VSS,
                         ),
-                        name=temp_name,
+                        name=f"{params.node_names[c[0]]}{params.node_names[c[1]]}_coupling_{i}",
                     )
 
     # Create wrapper
@@ -169,6 +166,37 @@ def gen_ogate(params: OGateParams) -> h.Module:
 
     return out
 
+"""
+The defining weight matrix of an AND o-gate is:
+
+    0 -2  4  1
+   -2  0  4  1
+    4  4  0 -2
+    1  1 -2  0
+
+And it has nodes:
+
+A, B, C == A&B, REF - the reference bias bit
+
+Solving for untwisted paths, we get the connection tensor:
+
+Q = (
+    (( 0, 1,-2),( 1, 2, 4),( 2, 3,-2),( 3, 0, 1)),
+    (( 0, 1,-2),( 1, 3, 1),( 3, 2,-2),( 2, 0, 4)),
+    (( 0, 2, 4),( 2, 1, 4),( 1, 3, 1),( 3, 0, 1)),
+)
+"""
+
+Q = (
+    (( 0, 1,-2),( 1, 2, 4),( 2, 3,-2),( 3, 0, 1)),
+    (( 0, 1,-2),( 1, 3, 1),( 3, 2,-2),( 2, 0, 4)),
+    (( 0, 2, 4),( 2, 1, 4),( 1, 3, 1),( 3, 0, 1)),
+)
+
+nodes = ("A", "B", "C", "REF")
+
+# oAND = gen_ogate(stages=9, node_names=nodes, couplings=Q, gate_name="AND")
+
 
 # h.elaborate(oAND)
 """
@@ -195,7 +223,7 @@ J = (
 
 nodes = ("A", "B", "S", "C", "AUX")
 
-oHA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="HA")
+# oHA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="HA")
 
 """
 The defining weight matrix of an Full-Adder o-gate is:
@@ -223,4 +251,4 @@ J = (
 
 nodes = ("A", "B", "Cin", "S", "Cout", "AUX")
 
-oFA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="FA")
+# oFA = gen_ogate(stages=9, node_names=nodes, couplings=J, gate_name="FA")

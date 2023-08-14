@@ -170,7 +170,7 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
 
         mod.add(
             hd.buf_1(p)(
-                A=mod.osc_arr.links[i * params.stages + 5],
+                A=mod.osc_arr.links[i * params.stages + params.stages//2 + 1],
                 X=mod.OUT[i],
                 VGND=mod.VSS,
                 VNB=mod.VSS,
@@ -180,39 +180,39 @@ def gen_in_osc(params: ioOscillatorParams) -> h.Module:
             name=f"out_coupling{i}",
         )
 
-    # Instantiate reference coupling
+    # # Instantiate reference coupling
 
-    mod.add(
-        hd.buf_1(p)(
-            A=mod.osc_arr.links[-4],
-            X=mod.REF,
-            VGND=mod.VSS,
-            VNB=mod.VSS,
-            VPWR=mod.VDD,
-            VPB=mod.VDD,
-        ),
-        name=f"ref_coupling",
-    )
+    # mod.add(
+    #     hd.buf_1(p)(
+    #         A=mod.osc_arr.links[-params.stages//2+1],
+    #         X=mod.REF,
+    #         VGND=mod.VSS,
+    #         VNB=mod.VSS,
+    #         VPWR=mod.VDD,
+    #         VPB=mod.VDD,
+    #     ),
+    #     name=f"ref_coupling",
+    # )
 
     # for i in range(params.n_bits):
 
     #     mod.add(
     #         gen_coupling(divisor=2)(
-    #             A=mod.osc_arr.links[i * params.stages + 6],
+    #             A=mod.osc_arr.links[i * params.stages + params.stages//2 + 1],
     #             B=mod.OUT[i],
     #             VSS=mod.VSS,
     #         ),
     #         name=f"out_coupling{i}",
     #     )
 
-    # mod.add(
-    #     gen_coupling(divisor=2)(
-    #         A=mod.osc_arr.links[-3],
-    #         B=mod.REF,
-    #         VSS=mod.VSS,
-    #     ),
-    #     name=f"ref_coupling",
-    # )
+    mod.add(
+        gen_coupling(divisor=200)(
+            A=mod.osc_arr.links[-params.stages//2+1],
+            B=mod.REF,
+            VSS=mod.VSS,
+        ),
+        name=f"ref_coupling",
+    )
 
     return mod
 
