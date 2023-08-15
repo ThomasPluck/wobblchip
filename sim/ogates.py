@@ -119,8 +119,8 @@ def gen_ogate(params: OGateParams) -> h.Module:
                     # Antisymmetric coupling
                     ogate.add(
                         gen_coupling(divisor=abs(c[-1]))(
-                            A = ogate.links[params.stages * c[0] + idq * 2 + (i + 1) % 2],
-                            B = ogate.links[params.stages * c[1] + idq * 2 + i],
+                            A = ogate.links[params.stages * c[0] + idq * 2 + (i + 1) % 2 + 10],
+                            B = ogate.links[params.stages * c[1] + idq * 2 + i + 10],
                             VSS = ogate.VSS,
                         ),
                         name=f"{params.node_names[c[0]]}{params.node_names[c[1]]}_coupling_{i}",
@@ -131,8 +131,8 @@ def gen_ogate(params: OGateParams) -> h.Module:
                     # Symmetric coupling
                     ogate.add(
                         gen_coupling(divisor=abs(c[-1]))(
-                            A = ogate.links[params.stages * c[0] + idq * 2 + i],
-                            B = ogate.links[params.stages * c[1] + idq * 2 + i],
+                            A = ogate.links[params.stages * c[0] + idq * 2 + i + 10],
+                            B = ogate.links[params.stages * c[1] + idq * 2 + i + 10],
                             VSS = ogate.VSS,
                         ),
                         name=f"{params.node_names[c[0]]}{params.node_names[c[1]]}_coupling_{i}",
